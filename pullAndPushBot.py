@@ -10,7 +10,7 @@ class pullAndPushRevisions:
 			self.siteTest = test
 			self.siteWikipedia = wikipedia
 			
-	def pullAndPush( self, cursor, currentRevision, increment, oneRevision ):
+	def pullAndPush( self, cursor, currentRevision, increment, threshold, oneRevision ):
 		count = currentRevision
 		while 1:
 			endCount = currentRevision + increment * 50 # Get 50 revisions
@@ -22,9 +22,8 @@ class pullAndPushRevisions:
 				else:
 					revids = revids + "|"
 				revids = revids + str(count)
-				count = count + 10
+				count = count + increment
 			#pprint.pprint(revids)
-			currentRevision = endCount
 			#print(endCount)
 			#continue
 			#sys.exit()
@@ -39,12 +38,17 @@ class pullAndPushRevisions:
 			pullGen = pywikibot.data.api.Request(
 				self.siteWikipedia, parameters=pullParameters )
 			pullData = pullGen.submit()
-			#pprint.pprint(data)
+			# TODO: If revision is nonexistent, see if the revision # is below a certain threshold;
+			# if it is, keep going but if it's a newer revision then keep looping and trying to get it
+			pprint.pprint(pullData)
+			sys.exit()
 			unsortedRevisions=[]
 			revisions = []
-			if len ( pullData['query']['pages'] ) ==0 :
+			if len ( pullData['query']['pages'] ) ==0:
 				print ( "Empty; continuing" )
 				continue
+			else:
+				currentRevision = endCount
 			for pageId,page in pullData['query']['pages'].items():
 				title = page['title']
 				ns = page['ns']
@@ -84,9 +88,11 @@ class pullAndPushRevisions:
 				pushData = pushGen.submit()
 				pprint.pprint(pushData)
 				if pushData['edit']['result'] == 'Success':
+					if currentRevision > threshold:
+						currentRevision = revision['revid'] + increment
 					cursorFilename = 'cursor' + str(cursor) + '.txt'
 					f = open( cursorFilename, 'w')
-					f.write( str(revision['revid'] + increment ) + "\n" )
+					f.write( str( currentRevision ) + "\n" )
 					f.close()
 				else:
 					print ( 'Edit failure' )
@@ -103,11 +109,13 @@ siteWikipedia = pywikibot.Site(code='en', fam='wikipedia')
 cursor = 0
 currentRevision = 0
 increment = 10
+threshold = 900000000 # 900 million
 oneRevision = False
 if len(sys.argv) < 2:
-	print ( 'Usage: python pullAndPushBot.py [--cursor] [--increment] [--currentrevision] [--onerevision]' )
+	print ( 'Usage: python pullAndPushBot.py [--cursor] [--increment] [--currentrevision] [--threshold] [--onerevision]' )
 	print ( '--cursor is the offset' )
 	print ( '--currentrevision is the starting revision' )
+	print ( '--threshold sets a revid after which bad revisions are not skipped' )
 	print ( '--onerevision stops after one revision' )
 	print ( 'Example: python pullAndPushBot.py --cursor=1' )
 	print ( 'Example: python pullAndPushBot.py --currentrevision=8000001' )
@@ -115,16 +123,19 @@ if len(sys.argv) < 2:
 	sys.exit()
 # Command line arguments
 for arg in sys.argv:
-	if arg[0:7] == 'cursor=':
-		cursor = int( arg[7:] )
-	if arg[0:10] == 'increment=':
-		cursor = int( arg[10:] )
-	if arg[0:16] == 'currentrevision=':
-		currentRevision = int( arg[16:] )
+	if arg[0:9] == '--cursor=':
+		cursor = int( arg[9:] )
+	if arg[0:12] == '--increment=':
+		cursor = int( arg[12:] )
+	if arg[0:18] == '--currentrevision=':
+		currentRevision = int( arg[18:] )
+	if arg[0:12] == '--threshold=':
+		threshold = int( arg[12:] )
 	if arg[0:13] == '--onerevision':
 		oneRevision = True
-	#print ( arg[0:11] )
-	#print ( arg[16:] )
+	#print ( arg )
+	#print ( arg[0:18] )
+	#print ( arg[18:] )
 if cursor == 0:
 	if currentRevision == 0:
 		print ( 'You must use either the --cursor or --currentrevision argument' )
@@ -141,4 +152,4 @@ if ( currentRevision % increment != cursor ):
 	print ( 'Error: Modulus is ' + str( currentRevision % increment ) )
 	sys.exit()
 print ( 'Resuming with ' + str( currentRevision ) )
-myTestScript.pullAndPush( cursor, currentRevision, increment, oneRevision )
+myTestScript.pullAndPush( cursor, currentRevision, increment, threshold, oneRevision )
