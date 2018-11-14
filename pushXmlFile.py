@@ -15,9 +15,9 @@ class pushXmlFile:
 		file = open(fileName, 'r')
 		thisLine = 0
 		data = { 'text': ''}
-		dataTypes = [ 'title', 'ns', 'timestamp', 'username', 'ip', 'comment' ]
-		defaultData = { 'username': '', 'ip': '', 'text': '', 'minor': False }
-		modes = [ 'page', 'revision', 'contributor' ]
+		dataTypes = [ 'title', 'ns', 'timestamp', 'username', 'ip', 'comment' ] # XML tags
+		defaultData = { 'username': '', 'ip': '', 'text': '', 'deleted': 0, 'minor': False }
+		modes = [ 'page', 'revision', 'contributor' ] # There are XML sub-tags for these
 		thisMode = ''
 		texting = False
 		textTag = '<text xml:space="preserve">'
@@ -25,7 +25,10 @@ class pushXmlFile:
 			#print line,
 			textStart = line.find( textTag )
 			textClose = line.find( '</text>' )
-			if texting == True or textStart != -1:
+			if texting == True or textStart != -1 or line.find('<text deleted="deleted" />') != -1:
+				if line.find('<text deleted="deleted" />') != -1:
+					data['deleted'] += 1
+					continue
 				texting = True # Begin processing potentially multiline text
 				if textStart == -1: # Start at the beginning of the line
 					textStart = 0
@@ -37,6 +40,7 @@ class pushXmlFile:
 					pushData ( data )
 					pprint.pprint ( data )
 					for key, defaultDatum in defaultData.items():
+						# Return everything to defaults in preparation for the next record
 						data[key] = defaultDatum
 					continue
 			else:
@@ -57,6 +61,12 @@ class pushXmlFile:
 			thisLine = thisLine + 1
 			if maxLines > 0 and thisLine > self.maxLines:
 				sys.exit()
+			if line.find( '<comment deleted="deleted" />') != -1:
+				data['deleted'] += 2
+				data['comment'] = ''
+			if line.find( '<contributor deleted="deleted" />') != -1:
+				data['deleted'] += 4
+				data['username'] = ''
 		
 def pushData( self, data ):
 	#undesirables = [ '-', ':', 'T', 'Z' ]
@@ -103,11 +113,9 @@ def pushData( self, data ):
 	if oneRevision == True:
 		sys.exit()
 
-if len(sys.argv) < 2:
-	print ( 'Usage: python pushXmlfile.py [--filename=] [--maxlines=] [--sofar=] [--onerevision' )
-	sys.exit()
-maxLines = 0
+maxLines = 0 # Value of zero means there is no limit
 soFar = 0
+fileName = ''
 #if os.path.isfile( cursorFilename ):
 #	f = open( cursorFilename, 'r')
 #	soFar = int( f.readline() )
@@ -120,6 +128,10 @@ for arg in sys.argv:
 		soFar = arg[6:]
 	if arg[0:13] == '--onerevision':
 		oneRevision = True
+if len(sys.argv) < 2 or fileName == '':
+	print ( 'Usage: python pushXmlfile.py [--filename=] [--maxlines=] [--sofar=] [--onerevision' )
+	print ( 'Example: python pushXmlfile.py --filename=foo.xml' )
+	sys.exit()
 siteTest = pywikibot.Site(code='en', fam='test2')
 if not siteTest.logged_in():
 	siteTest.login()

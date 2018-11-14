@@ -10,10 +10,12 @@ class pullAndPushRevisions:
 			self.siteTest = test
 			self.siteWikipedia = wikipedia
 			
-	def pullAndPush( self, cursor, currentRevision, increment, threshold, oneRevision ):
+	def pullAndPush( self, cursor, currentRevision, increment, threshold, useCursorFile, oneRevision ):
 		count = currentRevision
 		while 1:
 			endCount = currentRevision + increment * 50 # Get 50 revisions
+			if oneRevision == True:
+				endCount = currentRevision + increment
 			revids = ""
 			firstOne = True
 			while count < endCount:
@@ -31,17 +33,13 @@ class pullAndPushRevisions:
 				'action': 'query',
 				'prop': 'revisions',
 				'rvslots': 'main',
-				'rvprop': 'ids|flags|timestamp|user|userid|comment|content|tags',
+				'rvprop': 'ids|flags|timestamp|user|userid|comment|content|size|tags',
 				#'revids': '123456|123457'
 				'revids': revids
 			}
 			pullGen = pywikibot.data.api.Request(
 				self.siteWikipedia, parameters=pullParameters )
 			pullData = pullGen.submit()
-			# TODO: If revision is nonexistent, see if the revision # is below a certain threshold;
-			# if it is, keep going but if it's a newer revision then keep looping and trying to get it
-			pprint.pprint(pullData)
-			sys.exit()
 			unsortedRevisions=[]
 			revisions = []
 			if len ( pullData['query']['pages'] ) ==0:
@@ -70,19 +68,35 @@ class pullAndPushRevisions:
 					'remotetitle': revision['title'],
 					'page': revision['pageid'],
 					'token': self.siteTest.tokens['edit'],
-					'summary': revision['comment'],
 					'sdtags': '|'.join(revision['tags']),
 					'timestamp': revision['timestamp'],
-					'user': revision['user'],
-					'userid': revision['userid'],
-					'remoterev': revision['revid'],
-					'text': revision['slots']['main']['*']
+					'remoterev': revision['revid']					
 				}
 				if 'minor' in revision:
 					pushParameters['minor'] = 'true'
 				if 'bot' in revision:
 					pushParameters['bot'] = 'true'
-				pprint.pprint(pushParameters)
+				# Potentially hidden fields
+				pushParameters['deleted'] = 0
+				if 'userhidden' in revision:
+					pushParameters['deleted'] = pushParameters['deleted'] + 4
+					pushParameters['user'] = ''
+					pushParameters['userid'] = 0
+				else:
+					pushParameters['user'] = revision['user']
+					pushParameters['userid'] = revision['userid']
+				if 'commenthidden' in revision:
+					pushParameters['deleted'] = pushParameters['deleted'] + 2
+					pushParameters['summary'] = ''
+				else:
+					pushParameters['summary'] = revision['comment']
+				if 'texthidden' in revision['slots']['main']:
+					pushParameters['deleted'] = pushParameters['deleted'] + 1
+					pushParameters['text'] = ''
+					pushParameters['size'] = revision['size']
+				else:
+					pushParameters['text'] = revision['slots']['main']['*']
+				#pprint.pprint(pushParameters)
 				pushGen = pywikibot.data.api.Request(
 					self.siteTest, parameters=pushParameters )
 				pushData = pushGen.submit()
@@ -91,9 +105,10 @@ class pullAndPushRevisions:
 					if currentRevision > threshold:
 						currentRevision = revision['revid'] + increment
 					cursorFilename = 'cursor' + str(cursor) + '.txt'
-					f = open( cursorFilename, 'w')
-					f.write( str( currentRevision ) + "\n" )
-					f.close()
+					if useCursorFile == True:
+						f = open( cursorFilename, 'w')
+						f.write( str( currentRevision ) + "\n" )
+						f.close()
 				else:
 					print ( 'Edit failure' )
 					pprint.pprint(pushData['edit']['result'])
@@ -110,6 +125,7 @@ cursor = 0
 currentRevision = 0
 increment = 10
 threshold = 900000000 # 900 million
+useCursorFile = True
 oneRevision = False
 if len(sys.argv) < 2:
 	print ( 'Usage: python pullAndPushBot.py [--cursor] [--increment] [--currentrevision] [--threshold] [--onerevision]' )
@@ -133,6 +149,7 @@ for arg in sys.argv:
 		threshold = int( arg[12:] )
 	if arg[0:13] == '--onerevision':
 		oneRevision = True
+		useCursorFile = False
 	#print ( arg )
 	#print ( arg[0:18] )
 	#print ( arg[18:] )
@@ -152,4 +169,4 @@ if ( currentRevision % increment != cursor ):
 	print ( 'Error: Modulus is ' + str( currentRevision % increment ) )
 	sys.exit()
 print ( 'Resuming with ' + str( currentRevision ) )
-myTestScript.pullAndPush( cursor, currentRevision, increment, threshold, oneRevision )
+myTestScript.pullAndPush( cursor, currentRevision, increment, threshold, useCursorFile, oneRevision )
