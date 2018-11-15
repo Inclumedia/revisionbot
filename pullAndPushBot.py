@@ -2,6 +2,7 @@ import pywikibot
 import pprint
 import sys
 import os.path
+import time
 from pywikibot import pagegenerators
 import operator
 
@@ -10,9 +11,11 @@ class pullAndPushRevisions:
 			self.siteTest = test
 			self.siteWikipedia = wikipedia
 			
-	def pullAndPush( self, cursor, currentRevision, increment, threshold, useCursorFile, oneRevision ):
-		count = currentRevision
+	def pullAndPush( self, cursor, currentRevision, increment, threshold, useCursorFile,
+		sleepInterval, oneRevision ):
+		#count = currentRevision
 		while 1:
+			count = currentRevision
 			endCount = currentRevision + increment * 50 # Get 50 revisions
 			if oneRevision == True:
 				endCount = currentRevision + increment
@@ -37,16 +40,23 @@ class pullAndPushRevisions:
 				#'revids': '123456|123457'
 				'revids': revids
 			}
+			#pprint.pprint(pullParameters)
 			pullGen = pywikibot.data.api.Request(
 				self.siteWikipedia, parameters=pullParameters )
 			pullData = pullGen.submit()
 			unsortedRevisions=[]
 			revisions = []
-			if len ( pullData['query']['pages'] ) ==0:
-				print ( "Empty; continuing" )
+			#pprint.pprint ( pullData )
+			try:
+				pullData['query']['pages']
+			except KeyError:
+			#if len ( pullData['query']['pages'] ) ==0:
+				if currentRevision < threshold:
+					currentRevision = endCount
+				print ( "Empty; continuing with " + str(currentRevision)
+					+ " after sleeping " + str(sleepInterval) + " seconds" )
+				time.sleep( sleepInterval )
 				continue
-			else:
-				currentRevision = endCount
 			for pageId,page in pullData['query']['pages'].items():
 				title = page['title']
 				ns = page['ns']
@@ -102,8 +112,8 @@ class pullAndPushRevisions:
 				pushData = pushGen.submit()
 				pprint.pprint(pushData)
 				if pushData['edit']['result'] == 'Success':
-					if currentRevision > threshold:
-						currentRevision = revision['revid'] + increment
+					#if currentRevision > threshold:
+					currentRevision = revision['revid'] + increment
 					cursorFilename = 'cursor' + str(cursor) + '.txt'
 					if useCursorFile == True:
 						f = open( cursorFilename, 'w')
@@ -124,7 +134,8 @@ siteWikipedia = pywikibot.Site(code='en', fam='wikipedia')
 cursor = 0
 currentRevision = 0
 increment = 10
-threshold = 900000000 # 900 million
+threshold = 800000000 # 900 million
+sleepInterval = 3
 useCursorFile = True
 oneRevision = False
 if len(sys.argv) < 2:
@@ -146,6 +157,8 @@ for arg in sys.argv:
 	if arg[0:18] == '--currentrevision=':
 		currentRevision = int( arg[18:] )
 	if arg[0:12] == '--threshold=':
+		threshold = int( arg[12:] )
+	if arg[0:12] == '--sleepinterval=':
 		threshold = int( arg[12:] )
 	if arg[0:13] == '--onerevision':
 		oneRevision = True
@@ -169,4 +182,5 @@ if ( currentRevision % increment != cursor ):
 	print ( 'Error: Modulus is ' + str( currentRevision % increment ) )
 	sys.exit()
 print ( 'Resuming with ' + str( currentRevision ) )
-myTestScript.pullAndPush( cursor, currentRevision, increment, threshold, useCursorFile, oneRevision )
+myTestScript.pullAndPush( cursor, currentRevision, increment, threshold, useCursorFile,
+	sleepInterval, oneRevision )
