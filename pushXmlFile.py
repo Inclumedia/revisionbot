@@ -1,6 +1,7 @@
 import sys
 import pprint
 import pywikibot
+from xml.sax.saxutils import unescape
 
 class pushXmlFile:
 	def __init__(self, test, fileName, soFar, maxLines, oneRevision ):
@@ -11,12 +12,14 @@ class pushXmlFile:
 		self.maxLines = maxLines
 		self.oneRevision = oneRevision
 
-	def parseXmlFile ( self ):		
+	def parseXmlFile ( self ):
+		#h= HTMLParser.HTMLParser()
 		file = open(fileName, 'r')
 		thisLine = 0
 		data = { 'text': ''}
 		dataTypes = [ 'title', 'ns', 'timestamp', 'username', 'ip', 'comment', 'id' ] # XML tags
-		defaultData = { 'username': '', 'ip': '', 'text': '', 'deleted': 0, 'minor': False }
+		defaultData = { 'username': '', 'ip': '', 'comment': '', 'text': '',
+			'deleted': 0, 'contributorid': 0, 'minor': False }
 		modes = [ 'page', 'revision', 'contributor' ] # There are XML sub-tags for these
 		thisMode = ''
 		texting = False
@@ -35,9 +38,12 @@ class pushXmlFile:
 					texting = True # Begin processing potentially multiline text
 					if textStart == -1: # Start at the beginning of the line
 						textStart = 0
+					else:
+						textStart = line.find( '>' ) + 1
 					if textClose == -1:
 						textClose = len( line )
-					data['text'] = data['text'] + line[textStart + len(textTag):textClose]
+					#data['text'] = data['text'] + h.unescape( line[textStart:textClose] )
+					data['text'] = data['text'] + line[textStart:textClose]
 				if line.find( '</text>' ) != -1 or line.find('<text deleted="deleted" />') != -1:
 					texting = False # Prepare to process non-text stuff
 					pprint.pprint ( data )
@@ -60,7 +66,7 @@ class pushXmlFile:
 						if dataType == 'id':
 							fullDataType = thisMode + dataType
 						data[fullDataType] = line[dataStart + len(dataType)+2:dataClose]
-				if line.find( '<minor />' ) != -1:
+				if line.find( '<minor' ) != -1:
 					data['minor'] = True
 			thisLine = thisLine + 1
 			if maxLines > 0 and thisLine > self.maxLines:
@@ -73,6 +79,7 @@ class pushXmlFile:
 				data['username'] = ''
 		
 	def pushData( self, data ):
+		#h= HTMLParser.HTMLParser()
 		#undesirables = [ '-', ':', 'T', 'Z' ]
 		#for undesirable in undesirables:
 		#	data['timestamp'] = data['timestamp'].replace( undesirable, '' )
@@ -85,16 +92,16 @@ class pushXmlFile:
 			'remotetitle': data['title'],
 			'page': data['pageid'],
 			'token': self.siteTest.tokens['edit'],
-			'summary': data['comment'],
+			'summary': unescape( data['comment'] ),
 			#'sdtags': '|'.join(revision['tags']),
 			'timestamp': data['timestamp'],
 			'deleted': data['deleted'],
 			'user': data['username'],
 			'userid': data['contributorid'],
 			'remoterev': data['revisionid'],
-			'text': data['text']
+			'text': unescape( data['text'] )
 		}
-		if data['minor'] != '':
+		if data['minor'] != False:
 			pushParameters['minor'] = 'true'
 		#if data['bot'] != '':
 		#	pushParameters['bot'] = 'true'

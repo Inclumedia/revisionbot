@@ -5,6 +5,8 @@ import os.path
 import time
 from pywikibot import pagegenerators
 import operator
+#import HTMLParser
+from xml.sax.saxutils import unescape
 
 class pullAndPushRevisions:
 	def __init__(self, test, wikipedia):
@@ -14,6 +16,7 @@ class pullAndPushRevisions:
 	def pullAndPush( self, cursor, currentRevision, increment, threshold, useCursorFile,
 		sleepInterval, oneRevision ):
 		#count = currentRevision
+		h= HTMLParser.HTMLParser()
 		while 1:
 			count = currentRevision
 			endCount = currentRevision + increment * 50 # Get 50 revisions
@@ -99,14 +102,14 @@ class pullAndPushRevisions:
 					pushParameters['deleted'] = pushParameters['deleted'] + 2
 					pushParameters['summary'] = ''
 				else:
-					pushParameters['summary'] = revision['comment']
+					pushParameters['summary'] = unescape( revision['comment'] )
 				if 'texthidden' in revision['slots']['main']:
 					pushParameters['deleted'] = pushParameters['deleted'] + 1
 					pushParameters['text'] = ''
 					pushParameters['size'] = revision['size']
 				else:
-					pushParameters['text'] = revision['slots']['main']['*']
-				#pprint.pprint(pushParameters)
+					pushParameters['text'] = unescape( revision['slots']['main']['*'] )
+				pprint.pprint(pushParameters)
 				pushGen = pywikibot.data.api.Request(
 					self.siteTest, parameters=pushParameters )
 				pushData = pushGen.submit()
