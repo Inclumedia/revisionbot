@@ -16,7 +16,6 @@ class pullAndPushRevisions:
 	def pullAndPush( self, cursor, currentRevision, increment, threshold, useCursorFile,
 		sleepInterval, oneRevision ):
 		#count = currentRevision
-		h= HTMLParser.HTMLParser()
 		while 1:
 			count = currentRevision
 			endCount = currentRevision + increment * 50 # Get 50 revisions
@@ -134,7 +133,7 @@ if not siteTest.logged_in():
     siteTest.login()
 siteWikipedia = pywikibot.Site(code='en', fam='wikipedia')
 # Defaults
-cursor = 0
+cursor = -1
 currentRevision = 0
 increment = 10
 threshold = 800000000 # 900 million
@@ -169,7 +168,7 @@ for arg in sys.argv:
 	#print ( arg )
 	#print ( arg[0:18] )
 	#print ( arg[18:] )
-if cursor == 0:
+if cursor == -1:
 	if currentRevision == 0:
 		print ( 'You must use either the --cursor or --currentrevision argument' )
 		sys.exit()
