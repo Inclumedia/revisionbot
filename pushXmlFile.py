@@ -1,6 +1,8 @@
 import sys
 import pprint
 import pywikibot
+import MySQLdb
+
 from xml.sax.saxutils import unescape
 
 class pushXmlFile:
@@ -13,6 +15,10 @@ class pushXmlFile:
 		self.oneRevision = oneRevision
 
 	def parseXmlFile ( self ):
+		# Open database connection
+		db = MySQLdb.connect("localhost","admin","314159265","test2" )
+		# prepare a cursor object using cursor() method
+		cursor = db.cursor()
 		#h= HTMLParser.HTMLParser()
 		file = open(fileName, 'r')
 		thisLine = 0
@@ -47,7 +53,7 @@ class pushXmlFile:
 				if line.find( '</text>' ) != -1 or line.find('<text deleted="deleted" />') != -1:
 					texting = False # Prepare to process non-text stuff
 					pprint.pprint ( data )
-					self.pushData ( data )
+					self.pushData ( db, cursor, data )
 					for key, defaultDatum in defaultData.items():
 						# Return everything to defaults in preparation for the next record
 						data[key] = defaultDatum
@@ -78,7 +84,8 @@ class pushXmlFile:
 				data['deleted'] += 4
 				data['username'] = ''
 		
-	def pushData( self, data ):
+	def pushData( self, db, cursor, data ):
+		
 		#h= HTMLParser.HTMLParser()
 		#undesirables = [ '-', ':', 'T', 'Z' ]
 		#for undesirable in undesirables:
@@ -101,27 +108,115 @@ class pushXmlFile:
 			'remoterev': data['revisionid'],
 			'text': unescape( data['text'] )
 		}
+		newRevTimestamp = data['timestamp'][0:4]
+		newRevTimestamp = newRevTimestamp + data['timestamp'][5:7]
+		newRevTimestamp = newRevTimestamp + data['timestamp'][8:10]
+		newRevTimestamp = newRevTimestamp + data['timestamp'][11:13]
+		newRevTimestamp = newRevTimestamp + data['timestamp'][14:16]
+		newRevTimestamp = newRevTimestamp + data['timestamp'][17:19]
+		print (data['timestamp'])
+		print (newRevTimestamp)
+		#sys.exit()
+		revMinorEdit = 0
 		if data['minor'] != False:
 			pushParameters['minor'] = 'true'
+			revMinorEdit = 1
 		#if data['bot'] != '':
 		#	pushParameters['bot'] = 'true'
 		if self.reachedSoFar != True and self.soFar > 0:
 			if self.soFar == data['revisionid']:
 				self.reachedSoFar = True
 			return
-		pushGen = pywikibot.data.api.Request(
-			self.siteTest, parameters=pushParameters )
-		pushData = pushGen.submit()
-		pprint.pprint(pushData)
-		if pushData['edit']['result'] == 'Success':
-			cursorFilename = 'cursor' + self.fileName + '.txt'
-			f = open( cursorFilename, 'w')
-			f.write( str(data['revisionid'] ) + "\n" )
-			f.close()
-		else:
-			print ( 'Edit failure' )
-			#pprint.pprint(pushData['edit']['result'])
+		#pushGen = pywikibot.data.api.Request(
+		#	self.siteTest, parameters=pushParameters )
+		#pushData = pushGen.submit()
+		#pprint.pprint(pushData)
+		#if pushData['edit']['result'] == 'Success':
+		#print ( str(float(random.randint(1, 999999999999)/1000000000000) ) )
+		#sys.exit()
+		#sql = "SELECT from page WHERE 
+		sql = "INSERT INTO page(page_namespace, "
+		sql = sql + "page_title, page_restrictions, page_is_new,"
+		sql = sql + "page_random, page_touched, page_links_updated,"
+		sql = sql + "page_latest, page_len, page_content_model) "
+		sql = sql + "VALUES (1000, '" + data['revisionid'] + "', '', 1,"
+		#sql = sql + str(float(random.randint(1, 999999999999)/1000000000000)) + ","
+		#sql = sql + "0." + random.randint(1,9) + random.randint(1,9) + random.randint(1,9)
+		#sql = sql + random.randint(1,9) + random.randint(1,9) + random.randint(1,9)
+		#sql = sql + random.randint(1,9) + random.randint(1,9) + random.randint(1,9)
+		#sql = sql + random.randint(1,9) + random.randint(1,9) + random.randint(1,9)
+		#sql = sql + random.randint(1,9) + random.randint(1,9) + ","
+		sql = sql + "RAND(), "
+		sql = sql + "20301231010203, 20301231010203, 0,"
+		sql = sql + str( len(unescape( data['text']) ) ) + ","
+		sql = sql + "'wikitext')"
+		print (sql)
+		try:
+			cursor.execute(sql)
+			db.commit()
+		except TypeError as e:
+			print (e)
+			db.rollback()
 			sys.exit()
+		pageRowId = cursor.lastrowid
+		print("last page row id:" + str(pageRowId))
+		sql = "INSERT INTO text(old_text,old_flags) VALUES ('"
+		sql = sql + MySQLdb.escape_string( unescape( data['text'] ) ) + "','')"
+		try:
+			cursor.execute(sql)
+		except TypeError as e:
+			print (e)
+			db.rollback()
+			sys.exit()
+		textRowId = cursor.lastrowid
+		#m = hashlib.md5()
+		#m.update( unescape( data['text'] ) )
+		#hash = hashlib.md5( unescape( data['text'] ) ).hexdigest()
+		print("last text row id:" + str(textRowId))
+		data['title'] = data['title'].replace(' ', '_')
+		sql = "INSERT INTO revision(rev_page,rev_text_id,rev_comment,rev_user,rev_user_text,"
+		sql = sql + "rev_timestamp, rev_minor_edit, rev_deleted, rev_len," # rev_parent_id omitted
+		sql = sql + "rev_sha1, rev_content_model, rev_content_format, rev_remote_page,"
+		sql = sql + "rev_remote_namespace, rev_remote_title, rev_remote_rev, rev_remote_user) "
+		sql = sql + "VALUES ( " + str(pageRowId) + "," + str(textRowId) + ","
+		sql = sql + "'" + MySQLdb.escape_string( unescape( data['comment'] ) ) + "', "
+		sql = sql + "0, "
+		sql = sql + "'" + MySQLdb.escape_string( unescape( data['username'] ) ) + "', "
+		sql = sql + str(newRevTimestamp) + ", " + str(revMinorEdit) + ", " + str(data['deleted']) + ", "
+		sql = sql + str( len( unescape( data['text'] ) ) ) + ", '"
+		#sql = sql + MySQLdb.escape_string( m.digest() ) + "','wikitext',"
+		#sql = sql + MySQLdb.escape_string( hash ) + "','wikitext',"
+		sql = sql + "','wikitext',"
+		sql = sql + "'text/x-wiki'," + str(data['pageid']) + ", " + str(data['ns']) + ", '"
+		sql = sql + MySQLdb.escape_string( unescape( data['title'] ) ) + "', "
+		sql = sql + str( data['revisionid'] ) + ", " + str( data['contributorid'] )
+		sql = sql + ")"
+		print (sql)
+		try:
+			cursor.execute(sql)
+		except TypeError as e:
+			print (e)
+			db.rollback()
+			sys.exit()
+		revRowId = cursor.lastrowid
+		print("last rev row id:" + str(revRowId))
+		sql = "UPDATE page SET page_latest=" + str(revRowId) + " WHERE page_id=" + str(pageRowId)
+		try:
+			cursor.execute(sql)
+			db.commit()
+		except TypeError as e:
+			print (e)
+			db.rollback()
+			sys.exit()
+		#sys.exit()
+		cursorFilename = 'cursor' + self.fileName + '.txt'
+		f = open( cursorFilename, 'w')
+		f.write( str(data['revisionid'] ) + "\n" )
+		f.close()
+		#else:
+		#	print ( 'Edit failure' )
+			#pprint.pprint(pushData['edit']['result'])
+		#	sys.exit()
 		if oneRevision == True:
 			sys.exit()
 
