@@ -2,6 +2,7 @@ import sys
 import pprint
 import pywikibot
 import MySQLdb
+import json
 
 from xml.sax.saxutils import unescape
 
@@ -16,6 +17,7 @@ class pushXmlFile:
 
 	def parseXmlFile ( self ):
 		# Open database connection
+		rowId = 0
 		db = MySQLdb.connect("localhost","admin","314159265","test2" )
 		# prepare a cursor object using cursor() method
 		cursor = db.cursor()
@@ -53,7 +55,8 @@ class pushXmlFile:
 				if line.find( '</text>' ) != -1 or line.find('<text deleted="deleted" />') != -1:
 					texting = False # Prepare to process non-text stuff
 					pprint.pprint ( data )
-					self.pushData ( db, cursor, data )
+					rowId = rowId + 1
+					self.pushData ( db, cursor, data, rowId )
 					for key, defaultDatum in defaultData.items():
 						# Return everything to defaults in preparation for the next record
 						data[key] = defaultDatum
@@ -84,8 +87,7 @@ class pushXmlFile:
 				data['deleted'] += 4
 				data['username'] = ''
 		
-	def pushData( self, db, cursor, data ):
-		
+	def pushData( self, db, cursor, data, rowId ):
 		#h= HTMLParser.HTMLParser()
 		#undesirables = [ '-', ':', 'T', 'Z' ]
 		#for undesirable in undesirables:
@@ -127,6 +129,7 @@ class pushXmlFile:
 			if self.soFar == data['revisionid']:
 				self.reachedSoFar = True
 			return
+		rowId = rowId + 1
 		#pushGen = pywikibot.data.api.Request(
 		#	self.siteTest, parameters=pushParameters )
 		#pushData = pushGen.submit()
@@ -135,11 +138,11 @@ class pushXmlFile:
 		#print ( str(float(random.randint(1, 999999999999)/1000000000000) ) )
 		#sys.exit()
 		#sql = "SELECT from page WHERE 
-		sql = "INSERT INTO page(page_namespace, "
+		sql = "INSERT INTO page(page_id, page_namespace, "
 		sql = sql + "page_title, page_restrictions, page_is_new,"
 		sql = sql + "page_random, page_touched, page_links_updated,"
 		sql = sql + "page_latest, page_len, page_content_model) "
-		sql = sql + "VALUES (1000, '" + data['revisionid'] + "', '', 1,"
+		sql = sql + "VALUES ( " + str(rowId) + ", 1000, '" + data['revisionid'] + "', '', 1,"
 		#sql = sql + str(float(random.randint(1, 999999999999)/1000000000000)) + ","
 		#sql = sql + "0." + random.randint(1,9) + random.randint(1,9) + random.randint(1,9)
 		#sql = sql + random.randint(1,9) + random.randint(1,9) + random.randint(1,9)
@@ -147,20 +150,19 @@ class pushXmlFile:
 		#sql = sql + random.randint(1,9) + random.randint(1,9) + random.randint(1,9)
 		#sql = sql + random.randint(1,9) + random.randint(1,9) + ","
 		sql = sql + "RAND(), "
-		sql = sql + "20301231010203, 20301231010203, 0,"
+		sql = sql + "20301231010203, 20301231010203, " + str(rowId) + ","
 		sql = sql + str( len(unescape( data['text']) ) ) + ","
 		sql = sql + "'wikitext')"
 		print (sql)
 		try:
 			cursor.execute(sql)
-			db.commit()
 		except TypeError as e:
 			print (e)
 			db.rollback()
 			sys.exit()
-		pageRowId = cursor.lastrowid
-		print("last page row id:" + str(pageRowId))
-		sql = "INSERT INTO text(old_text,old_flags) VALUES ('"
+		#pageRowId = cursor.lastrowid
+		#print("last page row id:" + str(pageRowId))
+		sql = "INSERT INTO text(old_id,old_text,old_flags) VALUES (" + str(rowId) + ",'"
 		sql = sql + MySQLdb.escape_string( unescape( data['text'] ) ) + "','')"
 		try:
 			cursor.execute(sql)
@@ -168,17 +170,17 @@ class pushXmlFile:
 			print (e)
 			db.rollback()
 			sys.exit()
-		textRowId = cursor.lastrowid
+		#textRowId = cursor.lastrowid
 		#m = hashlib.md5()
 		#m.update( unescape( data['text'] ) )
 		#hash = hashlib.md5( unescape( data['text'] ) ).hexdigest()
-		print("last text row id:" + str(textRowId))
+		#print("last text row id:" + str(textRowId))
 		data['title'] = data['title'].replace(' ', '_')
-		sql = "INSERT INTO revision(rev_page,rev_text_id,rev_comment,rev_user,rev_user_text,"
+		sql = "INSERT INTO revision(rev_id,rev_page,rev_text_id,rev_comment,rev_user,rev_user_text,"
 		sql = sql + "rev_timestamp, rev_minor_edit, rev_deleted, rev_len," # rev_parent_id omitted
 		sql = sql + "rev_sha1, rev_content_model, rev_content_format, rev_remote_page,"
 		sql = sql + "rev_remote_namespace, rev_remote_title, rev_remote_rev, rev_remote_user) "
-		sql = sql + "VALUES ( " + str(pageRowId) + "," + str(textRowId) + ","
+		sql = sql + "VALUES ( " + str(rowId) + "," + str(rowId) + "," + str(rowId) + ","
 		sql = sql + "'" + MySQLdb.escape_string( unescape( data['comment'] ) ) + "', "
 		sql = sql + "0, "
 		sql = sql + "'" + MySQLdb.escape_string( unescape( data['username'] ) ) + "', "
@@ -194,25 +196,33 @@ class pushXmlFile:
 		print (sql)
 		try:
 			cursor.execute(sql)
-		except TypeError as e:
-			print (e)
-			db.rollback()
-			sys.exit()
-		revRowId = cursor.lastrowid
-		print("last rev row id:" + str(revRowId))
-		sql = "UPDATE page SET page_latest=" + str(revRowId) + " WHERE page_id=" + str(pageRowId)
-		try:
-			cursor.execute(sql)
 			db.commit()
 		except TypeError as e:
 			print (e)
 			db.rollback()
 			sys.exit()
+		#revRowId = cursor.lastrowid
+		#print("last rev row id:" + str(revRowId))
+		#sql = "UPDATE page SET page_latest=" + str(revRowId) + " WHERE page_id=" + str(pageRowId)
+		#try:
+		#	cursor.execute(sql)
+		#	db.commit()
+		#except TypeError as e:
+		#	print (e)
+		#	db.rollback()
+		#	sys.exit()
 		#sys.exit()
 		cursorFilename = 'cursor' + self.fileName + '.txt'
-		f = open( cursorFilename, 'w')
-		f.write( str(data['revisionid'] ) + "\n" )
-		f.close()
+		#f = open( cursorFilename, 'w')
+		#f.write( str(data['revisionid'] ) + "\n" )
+		cursorData = {}
+		cursorData['variables'] = []
+		cursorData['variables'].append({
+			'revisionId': str(data['revisionid']),
+			'rowid': str(rowId)
+		})
+		#with open(cursorFilename, 'w') as outfile:
+		#	json.dump(cursorData, outfile)
 		#else:
 		#	print ( 'Edit failure' )
 			#pprint.pprint(pushData['edit']['result'])
