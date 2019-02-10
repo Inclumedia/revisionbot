@@ -3,6 +3,7 @@ import pprint
 import pywikibot
 import MySQLdb
 import json
+import mysql.connector
 
 from xml.sax.saxutils import unescape
 
@@ -19,6 +20,9 @@ class pushXmlFile:
 		# Open database connection
 		rowId = 0
 		db = MySQLdb.connect("localhost","admin","314159265","test2" )
+		conn = mysql.connector.connect(host="localhost",database="test2", user="admin",
+			password="314159265")
+		connCursor = conn.cursor(prepared=True)
 		# prepare a cursor object using cursor() method
 		cursor = db.cursor()
 		#h= HTMLParser.HTMLParser()
@@ -35,7 +39,7 @@ class pushXmlFile:
 		for key, defaultDatum in defaultData.items():
 			data[key] = defaultDatum
 		for line in file:
-			print line,
+			#print line,
 			textStart = line.find( textTag )
 			textClose = line.find( '</text>' )
 			if texting == True or textStart != -1 or line.find('<text deleted="deleted" />') != -1:
@@ -54,9 +58,9 @@ class pushXmlFile:
 					data['text'] = data['text'] + line[textStart:textClose]
 				if line.find( '</text>' ) != -1 or line.find('<text deleted="deleted" />') != -1:
 					texting = False # Prepare to process non-text stuff
-					pprint.pprint ( data )
+					#pprint.pprint ( data )
 					rowId = rowId + 1
-					self.pushData ( db, cursor, data, rowId )
+					self.pushData ( db, cursor, data, rowId, connCursor )
 					for key, defaultDatum in defaultData.items():
 						# Return everything to defaults in preparation for the next record
 						data[key] = defaultDatum
@@ -87,7 +91,7 @@ class pushXmlFile:
 				data['deleted'] += 4
 				data['username'] = ''
 		
-	def pushData( self, db, cursor, data, rowId ):
+	def pushData( self, db, cursor, data, rowId, connCursor ):
 		#h= HTMLParser.HTMLParser()
 		#undesirables = [ '-', ':', 'T', 'Z' ]
 		#for undesirable in undesirables:
@@ -116,8 +120,8 @@ class pushXmlFile:
 		newRevTimestamp = newRevTimestamp + data['timestamp'][11:13]
 		newRevTimestamp = newRevTimestamp + data['timestamp'][14:16]
 		newRevTimestamp = newRevTimestamp + data['timestamp'][17:19]
-		print (data['timestamp'])
-		print (newRevTimestamp)
+		#print (data['timestamp'])
+		#print (newRevTimestamp)
 		#sys.exit()
 		revMinorEdit = 0
 		if data['minor'] != False:
@@ -162,14 +166,22 @@ class pushXmlFile:
 			sys.exit()
 		#pageRowId = cursor.lastrowid
 		#print("last page row id:" + str(pageRowId))
-		sql = "INSERT INTO text(old_id,old_text,old_flags) VALUES (" + str(rowId) + ",'"
-		sql = sql + MySQLdb.escape_string( unescape( data['text'] ) ) + "','')"
-		try:
-			cursor.execute(sql)
-		except TypeError as e:
-			print (e)
-			db.rollback()
+		sql = "INSERT INTO text(old_id,old_text,old_flags) VALUES (%s, %s, '')"
+		#sql = "INSERT INTO text VALUES (%s, %s, '')"
+		globals()['theseParams'].append( (str(rowId), data['text']) )
+		if rowId % 100 == 0:
+			connCursor.executemany(sql, theseParams)
+			connCursor.close()
+			pprint.pprint( theseParams )
+			globals()['theseParams'] = []
 			sys.exit()
+		#theseParams = [rowId, data['text']]
+		#try:
+		
+		#except TypeError as e:
+		#	print (e)
+		#	db.rollback()
+		#	sys.exit()
 		#textRowId = cursor.lastrowid
 		#m = hashlib.md5()
 		#m.update( unescape( data['text'] ) )
@@ -193,7 +205,7 @@ class pushXmlFile:
 		sql = sql + MySQLdb.escape_string( unescape( data['title'] ) ) + "', "
 		sql = sql + str( data['revisionid'] ) + ", " + str( data['contributorid'] )
 		sql = sql + ")"
-		print (sql)
+		#print (sql)
 		try:
 			cursor.execute(sql)
 			db.commit()
@@ -234,6 +246,7 @@ maxLines = 0 # Value of zero means there is no limit
 soFar = 0
 fileName = ''
 oneRevision = False
+theseParams = []
 #if os.path.isfile( cursorFilename ):
 #	f = open( cursorFilename, 'r')
 #	soFar = int( f.readline() )
